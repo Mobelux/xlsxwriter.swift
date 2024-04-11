@@ -3,6 +3,7 @@
 //  Created by Daniel Müllenborn on 31.12.20.
 //
 
+import Foundation
 import libxlsxwriter
 
 /// Struct to represent an Excel worksheet.
@@ -104,9 +105,20 @@ public struct Worksheet {
     case .formula(let formula):
       error = formula.withCString { s in worksheet_write_formula(lxw_worksheet, r, c, s, f) }
     case .datetime(let datetime):
-      error = lxw_error(rawValue: 0)
-      let num = (datetime.timeIntervalSince1970 / 86400) + 25569
-      worksheet_write_number(lxw_worksheet, r, c, num, f)
+      let dateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: datetime)
+      guard let year = dateComponents.year, let month = dateComponents.month, let day = dateComponents.day,
+            let hour = dateComponents.hour, let minute = dateComponents.minute, let second = dateComponents.second else {
+        error = LXW_ERROR_CREATING_TMPFILE
+        return self
+      }
+
+      let lxwDatetime = lxw_datetime(year: Int32(year), month: Int32(month), day: Int32(day), hour: Int32(hour), min: Int32(minute), sec: Double(second))
+      let size = MemoryLayout<lxw_datetime>.size(ofValue: lxwDatetime)
+      let datetimePointer = UnsafeMutablePointer<lxw_datetime>.allocate(capacity: size)
+      datetimePointer.initialize(to: lxwDatetime)
+
+      error = worksheet_write_datetime(lxw_worksheet, r, c, datetimePointer, f)
+      datetimePointer.deallocate()
     }
     if error.rawValue != 0 { fatalError(String(cString: lxw_strerror(error))) }
 
